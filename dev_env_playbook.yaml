@@ -1,0 +1,147 @@
+---
+- hosts: localhost
+  name: Dev environment
+  connection: local
+  tasks:  
+    - name: Install libraries with apt
+      become: true
+      apt:
+        name: "{{ item }}"
+        update_cache: yes
+      loop:
+        - byobu
+        - curl
+        - build-essential
+        - git
+        - openssh-client
+        - autojump
+        - docker.io
+        - net-tools
+        - unzip
+        - jq
+        - lxc-templates
+    - name: "add {{ansible_user}} to docker group"
+      become: true
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+    - name: "install kind"
+      become: true
+      ansible.builtin.get_url:
+        url: https://kind.sigs.k8s.io/dl/v0.17.0/kind-linux-amd64
+        dest: /usr/local/bin/kind
+        owner: root
+        group: root
+        mode: 0775
+    - name: "install kubectl"
+      become: true
+      ansible.builtin.get_url:
+        url: "https://dl.k8s.io/release/v1.23.0/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        owner: root
+        group: root
+        mode: 0775
+
+    - name: "check autojump link"
+      stat:
+        path: "/etc/profile.d/autojump.sh"
+      register: autojump_link
+      changed_when: false
+    - name: install autojump link
+      become: true
+      when: not autojump_link.stat.exists
+      command: ln -s /usr/share/autojump/autojump.sh /etc/profile.d/autojump.sh   
+
+    - name: "check gh repo"
+      stat:
+        path: "/etc/apt/sources.list.d/github-cli.list"
+      register: gh_repo
+      changed_when: false
+    - name: install gh repo
+      become: true
+      when: not gh_repo.stat.exists
+      command: sh install_gh.sh     
+    - name: Install gh
+      become: true
+      apt:
+        name: gh
+        update_cache: yes
+    
+    - name: "check krew installation"
+      stat:
+        path: "/usr/local/bin/krew"
+      register: krew
+      become: true
+      changed_when: false
+    - name: "install krew"
+      become: true
+      when: not krew.stat.exists
+      command: sh install_krew.sh
+    - name: "krew path"
+      lineinfile:
+        dest: ${HOME}/.bashrc
+        regexp: 'DSE0RMR80S'
+        line: 'PATH="$PATH:$HOME/.krew/bin" #DSE0RMR80S - ansible krew path line, do not edit'
+
+    - name: install go tools
+      shell: go install -v {{ item }}
+      loop:
+          - golang.org/x/tools/cmd/godoc@latest
+          - github.com/spf13/cobra-cli@latest
+          
+    - name: check helm installed
+      stat:
+        path: /usr/local/bin/helm
+      register: helm_installed
+      changed_when: false
+    - name: install helm
+      shell: sh install_helm.sh
+      become: true
+      when: not helm_installed.stat.exists
+    - name: check go installed
+      stat:
+        path: /usr/local/go/bin/go
+      register: go_installed
+      changed_when: false
+    - name: install go
+      shell: "rm -rf /usr/local/go && curl -L https://dl.google.com/go/go1.9.4.linux-amd64.tar.gz | tar -xz -C /usr/local"
+      become: true
+      when: not go_installed.stat.exists
+    - name: create local go paths
+      ansible.builtin.file:
+        state: directory
+        mode: '0755'
+        path: "{{ item }}"
+      loop:
+        - ${HOME}/go/pkg
+        - ${HOME}/go/bin
+        - ${HOME}/go/src
+    - name: "go path"
+      lineinfile:
+        dest: ${HOME}/.bashrc
+        regexp: 'EBNH8ZV6CD'
+        line: 'PATH="$PATH:/usr/local/go/bin" #EBNH8ZV6CD - ansible go path line, do not edit'
+
+    - name: "local go path"
+      lineinfile:
+        dest: ${HOME}/.bashrc
+        regexp: 'S4FVBHPPU4'
+        line: 'PATH="$PATH:$HOME/go/bin" #S4FVBHPPU4 - ansible go path line, do not edit'
+
+    - name: "check krew installation"
+      stat:
+        path: "/usr/local/bin/krew"
+      register: krew
+      become: true
+
+    - name: check github insteadOf
+      shell: 'grep "insteadOf = https://github.com" $HOME/.gitconfig 2>&1 > /dev/null'
+      register: gitconfig_github_out
+      ignore_errors: true
+      changed_when: false
+
+    - name: register github insteadOf
+      shell: 'git config --global url.ssh://git@github.com/.insteadOf https://github.com/'
+      when: not gitconfig_github_out.rc == 0
+
